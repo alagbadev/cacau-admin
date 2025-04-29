@@ -1,14 +1,26 @@
-// server/server.js
 import express from 'express';
+import cors from 'cors';
 import dotenv from 'dotenv';
 import mysql from 'mysql2/promise';
-import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 
 // Carrega variáveis de ambiente
 dotenv.config();
 
+// garanta que há um segredo definido, senão encerra com erro claro
+if (!process.env.JWT_SECRET) {
+  console.error('FATAL: falta a variável JWT_SECRET no .env');
+  process.exit(1);
+}
 const app = express();
+
+// Configuração correta do CORS para o Vite (localhost:5173)
+const corsOptions = {
+  origin: 'http://localhost:5173',
+  credentials: true,
+};
+
+app.use(cors(corsOptions)); // Só esse!
 app.use(express.json());
 
 // Conexão MySQL
@@ -30,6 +42,9 @@ function generateToken(user) {
     { expiresIn: JWT_EXPIRES_IN }
   );
 }
+
+// Exporta db para outras rotas
+export { db };
 
 // Importa rotas
 import authRoutes from './routes/auth.js';

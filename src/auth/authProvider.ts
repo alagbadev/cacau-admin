@@ -1,7 +1,7 @@
 import { AuthProvider } from 'react-admin'
 import axios from 'axios'
 
-const apiUrl = 'http://localhost:3001' // ou seu domínio de backend futuramente
+const apiUrl = 'http://localhost:3000' // ou seu domínio de backend futuramente
 
 const authProvider: AuthProvider = {
   login: async ({ username, password }) => {
