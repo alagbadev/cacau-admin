@@ -20,7 +20,7 @@ const GlassCard = styled(Box)(({ theme }) => ({
 const FullScreenContainer = styled(Box)({
   width: '100%',
   height: '100vh',
-  margin: 0,
+  margin: 0,  
   padding: 0,
   display: 'flex',
   alignItems: 'center',

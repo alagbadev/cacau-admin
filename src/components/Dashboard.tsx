@@ -18,7 +18,7 @@ export default function Dashboard() {
   const [latestOrders, setLatestOrders] = useState<any[]>([])
 
   useEffect(() => {
-    // Visitas últimas 24h
+    // Visitas ultimas 24 horas
     dataProvider.getList('siteVisits', {
       pagination: { page: 1, perPage: 24 },
       sort: { field: 'hour', order: 'ASC' }

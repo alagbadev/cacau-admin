@@ -24,7 +24,7 @@ const CustomLayout = (props: any) => {
   return <DefaultLayout {...props} /> // Senão, usa o Layout padrão do react-admin
 }
 
-const dataProvider = simpleRestProvider('http://46.202.150.114:3000')
+const dataProvider = simpleRestProvider('/api')
 
 export default function App() {
   return (

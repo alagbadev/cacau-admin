@@ -19,7 +19,6 @@ import {
 >
   <ImageField source="src" title="title" />
 </ImageInput>
-
         <TextInput source="categoria" />
       </SimpleForm>
     </Create>

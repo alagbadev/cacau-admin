@@ -1,66 +1,143 @@
 import express from 'express';
-import cors from 'cors';
+import mysql from 'mysql2';
 import dotenv from 'dotenv';
-import mysql from 'mysql2/promise';
+import cors from 'cors';
 import jwt from 'jsonwebtoken';
 
 // Carrega variáveis de ambiente
 dotenv.config();
 
-// garanta que há um segredo definido, senão encerra com erro claro
-if (!process.env.JWT_SECRET) {
-  console.error('FATAL: falta a variável JWT_SECRET no .env');
-  process.exit(1);
-}
+// Instância do app
 const app = express();
+const port = process.env.PORT || 3000;
 
-// Configuração correta do CORS para o Vite (localhost:5173)
+// Pool de conexões MySQL
+const db = mysql
+  .createPool({
+    host: process.env.DB_HOST,
+    user: process.env.DB_USER,
+    password: process.env.DB_PASSWORD,
+    database: process.env.DB_NAME,
+    waitForConnections: true,
+    connectionLimit: 10,
+    queueLimit: 0,
+  })
+  .promise();
+
+// Teste de conexão
+(async () => {
+  try {
+    await db.execute('SELECT 1');
+    console.log('Conectado ao banco de dados via pool!');
+  } catch (err) {
+    console.error('Erro ao obter conexão do pool:', err);
+    process.exit(1);
+  }
+})();
+
+// Middleware para CORS e JSON
 const corsOptions = {
-  origin: 'http://localhost:5173',
+  origin: [
+    'http://localhost:5173',
+    'http://restaurante-delivery-chinesa.cacaucria.com.br',
+  ],
   credentials: true,
 };
-
-app.use(cors(corsOptions)); // Só esse!
+app.use(cors(corsOptions));
 app.use(express.json());
 
-// Conexão MySQL
-const db = await mysql.createPool({
-  host: process.env.DB_HOST,
-  user: process.env.DB_USER,
-  password: process.env.DB_PASSWORD,
-  database: process.env.DB_NAME,
-});
-
-// Config JWT
-const JWT_SECRET = process.env.JWT_SECRET;
-const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN;
-
-function generateToken(user) {
-  return jwt.sign(
-    { sub: user.id, email: user.email, role: user.role },
-    JWT_SECRET,
-    { expiresIn: JWT_EXPIRES_IN }
-  );
+// Middleware JWT para rotas protegidas
+function authenticateJWT(req, res, next) {
+  const header = req.headers.authorization;
+  if (!header?.startsWith('Bearer ')) {
+    return res.status(401).json({ message: 'Token não fornecido' });
+  }
+  const token = header.split(' ')[1];
+  jwt.verify(token, process.env.JWT_SECRET, (err, payload) => {
+    if (err) return res.status(401).json({ message: 'Token inválido' });
+    req.user = payload;
+    next();
+  });
 }
-
-// Exporta db para outras rotas
-export { db };
 
 // Importa rotas
 import authRoutes from './routes/auth.js';
 import produtosRoutes from './routes/produtos.js';
 import settingsRoutes from './routes/settings.js';
 
-// Middleware de autenticação (protege rotas)
-import { authenticateJWT } from './middleware/authMiddleware.js';
-
-// Rotas públicas
+// Rotas públicas de autenticação
 app.use('/auth', authRoutes);
 
-// Rotas protegidas
-app.use('/produtos', authenticateJWT, produtosRoutes);
+// Rotas de produtos
+app.get('/produtos', async (req, res) => {
+  try {
+    const [rows] = await db.query('SELECT * FROM produtos');
+    res.json(rows);
+  } catch (err) {
+    console.error('Erro ao buscar produtos:', err);
+    res.status(500).json({ error: 'Erro interno ao buscar produtos' });
+  }
+});
+
+app.get('/produtos/:categoria', async (req, res) => {
+  const { categoria } = req.params;
+  try {
+    const [rows] = await db.query(
+      'SELECT * FROM produtos WHERE categoria = ?',
+      [categoria]
+    );
+    res.json(rows);
+  } catch (err) {
+    console.error('Erro ao buscar produtos por categoria:', err);
+    res.status(500).json({ error: 'Erro interno ao buscar produtos por categoria' });
+  }
+});
+
+// CRUD completo para painel (protegido)
+app.post('/produtos', authenticateJWT, async (req, res) => {
+  const { nome, preco, imagem, descricao, categoria } = req.body;
+  try {
+    const [result] = await db.query(
+      'INSERT INTO produtos (nome, preco, imagem, descricao, categoria) VALUES (?, ?, ?, ?, ?)',
+      [nome, preco, imagem, descricao, categoria]
+    );
+    res.status(201).json({ id: result.insertId, nome, preco, imagem, descricao, categoria });
+  } catch (err) {
+    console.error('Erro ao criar produto:', err);
+    res.status(500).json({ error: 'Erro interno ao criar produto' });
+  }
+});
+
+app.put('/produtos/:id', authenticateJWT, async (req, res) => {
+  const { id } = req.params;
+  const { nome, preco, imagem, descricao, categoria } = req.body;
+  try {
+    await db.query(
+      'UPDATE produtos SET nome=?, preco=?, imagem=?, descricao=?, categoria=? WHERE id=?',
+      [nome, preco, imagem, descricao, categoria, id]
+    );
+    res.json({ id, nome, preco, imagem, descricao, categoria });
+  } catch (err) {
+    console.error('Erro ao atualizar produto:', err);
+    res.status(500).json({ error: 'Erro interno ao atualizar produto' });
+  }
+});
+
+app.delete('/produtos/:id', authenticateJWT, async (req, res) => {
+  const { id } = req.params;
+  try {
+    await db.query('DELETE FROM produtos WHERE id=?', [id]);
+    res.status(204).send();
+  } catch (err) {
+    console.error('Erro ao deletar produto:', err);
+    res.status(500).json({ error: 'Erro interno ao deletar produto' });
+  }
+});
+
+// Rotas de configurações protegidas
 app.use('/settings', authenticateJWT, settingsRoutes);
 
-// Inicia servidor
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`API rodando na porta ${PORT}`));
+// Inicia o servidor
+app.listen(port, '0.0.0.0', () => {
+  console.log(`🚀 Servidor rodando em http://restaurante-delivery-chinesa.cacaucria.com.br:${port}`);
+});
