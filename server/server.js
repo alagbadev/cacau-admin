@@ -1,28 +1,20 @@
 import express from 'express';
-import mysql from 'mysql2';
 import dotenv from 'dotenv';
 import cors from 'cors';
 import jwt from 'jsonwebtoken';
 
-// Carrega variáveis de ambiente
+import { db } from './db.js'; // ✅ agora vem do arquivo db.js
+import siteVisitsRoutes from './routes/siteVisits.js';
+import whatsappOrdersRoutes from './routes/whatsappOrders.js';
+import latestOrdersRoutes from './routes/latestOrders.js';
+import authRoutes from './routes/auth.js';
+import produtosRoutes from './routes/produtos.js';
+import settingsRoutes from './routes/settings.js';
+
 dotenv.config();
 
-// Instância do app
 const app = express();
 const port = process.env.PORT || 3000;
-
-// Pool de conexões MySQL
-const db = mysql
-  .createPool({
-    host: process.env.DB_HOST,
-    user: process.env.DB_USER,
-    password: process.env.DB_PASSWORD,
-    database: process.env.DB_NAME,
-    waitForConnections: true,
-    connectionLimit: 10,
-    queueLimit: 0,
-  })
-  .promise();
 
 // Teste de conexão
 (async () => {
@@ -35,7 +27,7 @@ const db = mysql
   }
 })();
 
-// Middleware para CORS e JSON
+// Middleware
 const corsOptions = {
   origin: [
     'http://localhost:5173',
@@ -46,7 +38,13 @@ const corsOptions = {
 app.use(cors(corsOptions));
 app.use(express.json());
 
-// Middleware JWT para rotas protegidas
+// Rotas públicas
+app.use('/siteVisits', siteVisitsRoutes);
+app.use('/whatsappOrders', whatsappOrdersRoutes);
+app.use('/latestOrders', latestOrdersRoutes);
+app.use('/auth', authRoutes);
+
+// Middleware JWT
 function authenticateJWT(req, res, next) {
   const header = req.headers.authorization;
   if (!header?.startsWith('Bearer ')) {
@@ -60,15 +58,7 @@ function authenticateJWT(req, res, next) {
   });
 }
 
-// Importa rotas
-import authRoutes from './routes/auth.js';
-import produtosRoutes from './routes/produtos.js';
-import settingsRoutes from './routes/settings.js';
-
-// Rotas públicas de autenticação
-app.use('/auth', authRoutes);
-
-// Rotas de produtos
+// Rotas de produtos (públicas)
 app.get('/produtos', async (req, res) => {
   try {
     const [rows] = await db.query('SELECT * FROM produtos');
@@ -93,7 +83,7 @@ app.get('/produtos/:categoria', async (req, res) => {
   }
 });
 
-// CRUD completo para painel (protegido)
+// Rotas protegidas
 app.post('/produtos', authenticateJWT, async (req, res) => {
   const { nome, preco, imagem, descricao, categoria } = req.body;
   try {
@@ -134,10 +124,9 @@ app.delete('/produtos/:id', authenticateJWT, async (req, res) => {
   }
 });
 
-// Rotas de configurações protegidas
 app.use('/settings', authenticateJWT, settingsRoutes);
 
-// Inicia o servidor
+// Start
 app.listen(port, '0.0.0.0', () => {
   console.log(`🚀 Servidor rodando em http://restaurante-delivery-chinesa.cacaucria.com.br:${port}`);
 });
