@@ -3,10 +3,11 @@ import dotenv from 'dotenv';
 import cors from 'cors';
 import jwt from 'jsonwebtoken';
 
-import { db } from './db.js'; // ✅ agora vem do arquivo db.js
+import { db } from './db.js';
 import siteVisitsRoutes from './routes/siteVisits.js';
 import whatsappOrdersRoutes from './routes/whatsappOrders.js';
 import latestOrdersRoutes from './routes/latestOrders.js';
+import trackingEventsRoutes from './routes/trackingEvents.js';
 import authRoutes from './routes/auth.js';
 import produtosRoutes from './routes/produtos.js';
 import settingsRoutes from './routes/settings.js';
@@ -14,7 +15,7 @@ import settingsRoutes from './routes/settings.js';
 dotenv.config();
 
 const app = express();
-const port = process.env.PORT || 3000;
+const port = process.env.PORT || 3001;
 
 // Teste de conexão
 (async () => {
@@ -27,7 +28,7 @@ const port = process.env.PORT || 3000;
   }
 })();
 
-// Middleware
+// Middleware de CORS e JSON
 const corsOptions = {
   origin: [
     'http://localhost:5173',
@@ -38,13 +39,39 @@ const corsOptions = {
 app.use(cors(corsOptions));
 app.use(express.json());
 
+// Middleware para expor Content-Range quando resposta for array
+app.use((req, res, next) => {
+  const originalSend = res.send;
+  res.send = function (body) {
+    try {
+      const json = typeof body === 'string' ? JSON.parse(body) : body;
+      if (Array.isArray(json)) {
+        res.setHeader('Content-Range', `items 0-${json.length - 1}/${json.length}`);
+      }
+    } catch (e) {
+      // body não é JSON, ignora
+    }
+    return originalSend.call(this, body);
+  };
+  next();
+});
+
 // Rotas públicas
 app.use('/siteVisits', siteVisitsRoutes);
 app.use('/whatsappOrders', whatsappOrdersRoutes);
 app.use('/latestOrders', latestOrdersRoutes);
+app.use('/trackingEvents', trackingEventsRoutes);
 app.use('/auth', authRoutes);
 
-// Middleware JWT
+// Rotas de produtos (GET público, demais protegidas)
+app.use('/produtos', (req, res, next) =>
+  req.method === 'GET' ? next() : authenticateJWT(req, res, next)
+, produtosRoutes);
+
+// Rotas de settings protegidas
+app.use('/settings', authenticateJWT, settingsRoutes);
+
+// Middleware de autenticação JWT reutilizável
 function authenticateJWT(req, res, next) {
   const header = req.headers.authorization;
   if (!header?.startsWith('Bearer ')) {
@@ -58,75 +85,18 @@ function authenticateJWT(req, res, next) {
   });
 }
 
-// Rotas de produtos (públicas)
-app.get('/produtos', async (req, res) => {
-  try {
-    const [rows] = await db.query('SELECT * FROM produtos');
-    res.json(rows);
-  } catch (err) {
-    console.error('Erro ao buscar produtos:', err);
-    res.status(500).json({ error: 'Erro interno ao buscar produtos' });
-  }
+// Handler para rotas não encontradas
+app.use((req, res) => {
+  res.status(404).json({ error: 'Rota não encontrada' });
 });
 
-app.get('/produtos/:categoria', async (req, res) => {
-  const { categoria } = req.params;
-  try {
-    const [rows] = await db.query(
-      'SELECT * FROM produtos WHERE categoria = ?',
-      [categoria]
-    );
-    res.json(rows);
-  } catch (err) {
-    console.error('Erro ao buscar produtos por categoria:', err);
-    res.status(500).json({ error: 'Erro interno ao buscar produtos por categoria' });
-  }
+// Handler de erros genérico
+app.use((err, req, res, next) => {
+  console.error('❌ Erro no servidor:', err);
+  res.status(500).json({ error: 'Erro interno do servidor' });
 });
 
-// Rotas protegidas
-app.post('/produtos', authenticateJWT, async (req, res) => {
-  const { nome, preco, imagem, descricao, categoria } = req.body;
-  try {
-    const [result] = await db.query(
-      'INSERT INTO produtos (nome, preco, imagem, descricao, categoria) VALUES (?, ?, ?, ?, ?)',
-      [nome, preco, imagem, descricao, categoria]
-    );
-    res.status(201).json({ id: result.insertId, nome, preco, imagem, descricao, categoria });
-  } catch (err) {
-    console.error('Erro ao criar produto:', err);
-    res.status(500).json({ error: 'Erro interno ao criar produto' });
-  }
-});
-
-app.put('/produtos/:id', authenticateJWT, async (req, res) => {
-  const { id } = req.params;
-  const { nome, preco, imagem, descricao, categoria } = req.body;
-  try {
-    await db.query(
-      'UPDATE produtos SET nome=?, preco=?, imagem=?, descricao=?, categoria=? WHERE id=?',
-      [nome, preco, imagem, descricao, categoria, id]
-    );
-    res.json({ id, nome, preco, imagem, descricao, categoria });
-  } catch (err) {
-    console.error('Erro ao atualizar produto:', err);
-    res.status(500).json({ error: 'Erro interno ao atualizar produto' });
-  }
-});
-
-app.delete('/produtos/:id', authenticateJWT, async (req, res) => {
-  const { id } = req.params;
-  try {
-    await db.query('DELETE FROM produtos WHERE id=?', [id]);
-    res.status(204).send();
-  } catch (err) {
-    console.error('Erro ao deletar produto:', err);
-    res.status(500).json({ error: 'Erro interno ao deletar produto' });
-  }
-});
-
-app.use('/settings', authenticateJWT, settingsRoutes);
-
-// Start
+// Start server
 app.listen(port, '0.0.0.0', () => {
-  console.log(`🚀 Servidor rodando em http://restaurante-delivery-chinesa.cacaucria.com.br:${port}`);
+  console.log(`🚀 Servidor rodando em http://localhost:${port}`);
 });
