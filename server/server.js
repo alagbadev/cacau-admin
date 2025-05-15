@@ -11,6 +11,7 @@ import trackingEventsRoutes from './routes/trackingEvents.js';
 import authRoutes from './routes/auth.js';
 import produtosRoutes from './routes/produtos.js';
 import settingsRoutes from './routes/settings.js';
+import categoriasRoutes from './routes/categorias.js';
 
 dotenv.config();
 
@@ -57,16 +58,19 @@ app.use((req, res, next) => {
 });
 
 // Rotas públicas
+app.use('/auth', authRoutes);
 app.use('/siteVisits', siteVisitsRoutes);
 app.use('/whatsappOrders', whatsappOrdersRoutes);
 app.use('/latestOrders', latestOrdersRoutes);
 app.use('/trackingEvents', trackingEventsRoutes);
-app.use('/auth', authRoutes);
+app.use('/categorias', categoriasRoutes);
 
 // Rotas de produtos (GET público, demais protegidas)
-app.use('/produtos', (req, res, next) =>
-  req.method === 'GET' ? next() : authenticateJWT(req, res, next)
-, produtosRoutes);
+app.use(
+  '/produtos',
+  (req, res, next) => (req.method === 'GET' ? next() : authenticateJWT(req, res, next)),
+  produtosRoutes
+);
 
 // Rotas de settings protegidas
 app.use('/settings', authenticateJWT, settingsRoutes);
